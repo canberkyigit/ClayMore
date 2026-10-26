@@ -45,10 +45,11 @@ To update later: `git pull && ./build.sh install`.
 
 **Notes**
 - A list of notes next to a plain-text editor. A note's first line is its title.
-- Autosaves as you type. Empty notes disappear when you leave them.
+- Autosaves as you type. A new note joins the list once it has a title; empty notes disappear when you leave them.
+- Deleting a note (⌫ in the list, or right-click) asks nothing; ⌘Z brings it back.
 - Pin notes to the top of the list (right-click → *Pin to Top*).
 - Lists continue on Return: `-item`, `- item`, `* item`, `1. item`, `- [ ] item`. Return on an empty item ends the list.
-- Links (`https://…`, `www.…`) become clickable.
+- Links (`https://…`, `www.…`) become clickable: ⌘-click opens one, a plain click edits it like any text.
 
 **Notes ↔ tasks**
 - Drag a note onto a column to turn it into a task (first line → name, the rest → description). The note is kept.

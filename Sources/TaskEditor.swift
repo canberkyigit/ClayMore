@@ -1,15 +1,14 @@
 import AppKit
 
-/// Popover for editing a task's name, priority and description. Changes are committed when it closes.
+/// Popover for editing a task's name, priority and description. Changes are committed when it closes
+/// (esc, ⌘↩, or a click outside); deleting is ⌫ on the card or its context menu.
 final class TaskEditor: NSViewController, NSPopoverDelegate, NSTextFieldDelegate, NSTextViewDelegate {
     var onCommit: ((UUID, String, String, Priority) -> Void)?
-    var onDelete: ((UUID) -> Void)?
     var onClose: (() -> Void)?
     weak var popover: NSPopover?
 
     private let task: TaskItem
     private let focusDetail: Bool
-    private var deleted = false
     private let titleField = NSTextField.bareInput(font: .systemFont(ofSize: 15, weight: .semibold))
     private let priorityControl = NSSegmentedControl(labels: Priority.allCases.map(\.title),
                                                      trackingMode: .selectOne, target: nil, action: nil)
@@ -26,7 +25,7 @@ final class TaskEditor: NSViewController, NSPopoverDelegate, NSTextFieldDelegate
 
     override func loadView() {
         let w: CGFloat = 340
-        let v = FlippedView(frame: NSRect(x: 0, y: 0, width: w, height: 258))
+        let v = FlippedView(frame: NSRect(x: 0, y: 0, width: w, height: 228))
 
         titleField.stringValue = task.title
         titleField.placeholderString = "Task name"
@@ -59,22 +58,6 @@ final class TaskEditor: NSViewController, NSPopoverDelegate, NSTextFieldDelegate
         v.addSubview(detailScroll)
         titleField.nextKeyView = tv
 
-        let delete = NSButton(title: "", target: self, action: #selector(deleteTask))
-        delete.isBordered = false
-        delete.attributedTitle = NSAttributedString(string: "Delete", attributes: [
-            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
-            .foregroundColor: NSColor.systemRed,
-        ])
-        delete.frame = NSRect(x: 14, y: 226, width: 50, height: 20)
-        v.addSubview(delete)
-
-        let hint = NSTextField(labelWithString: "esc or ⌘↩ to save")
-        hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .tertiaryLabelColor
-        hint.alignment = .right
-        hint.frame = NSRect(x: w - 196, y: 229, width: 180, height: 16)
-        v.addSubview(hint)
-
         view = v
     }
 
@@ -86,12 +69,6 @@ final class TaskEditor: NSViewController, NSPopoverDelegate, NSTextFieldDelegate
             view.window?.makeFirstResponder(titleField)
             titleField.currentEditor()?.selectedRange = NSRange(location: (titleField.stringValue as NSString).length, length: 0)
         }
-    }
-
-    @objc private func deleteTask() {
-        deleted = true
-        onDelete?(task.id)
-        popover?.performClose(nil)
     }
 
     private func isCancel(_ sel: Selector) -> Bool {
@@ -114,7 +91,6 @@ final class TaskEditor: NSViewController, NSPopoverDelegate, NSTextFieldDelegate
     }
 
     func popoverWillClose(_ notification: Notification) {
-        guard !deleted else { return }
         let title = titleField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let detail = detailView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         let priority = Priority(rawValue: priorityControl.selectedSegment) ?? .none

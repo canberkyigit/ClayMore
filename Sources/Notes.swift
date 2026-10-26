@@ -68,6 +68,12 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
         textView.isIncrementalSearchingEnabled = true
         textView.textContainerInset = NSSize(width: 16, height: 12) // first line level with the "NOTES" header
         textView.insertionPointColor = .controlAccentColor
+        // Links keep the text cursor: a plain click edits, ⌘-click opens (see clickedOnLink).
+        textView.linkTextAttributes = [
+            .foregroundColor: NSColor.linkColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+            .cursor: NSCursor.iBeam,
+        ]
         textView.defaultParagraphStyle = Self.paragraph
         textView.delegate = self
         textView.textStorage?.delegate = self
@@ -127,8 +133,9 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
         [.font: Self.font(size: Self.storedFontSize), .paragraphStyle: Self.paragraph, .foregroundColor: NSColor.labelColor]
     }
 
+    /// Stops at the first visible character, so it's cheap enough to check on every keystroke.
     private var editorIsEmpty: Bool {
-        textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !textView.string.contains { !$0.isWhitespace }
     }
 
     private func showNote(_ id: UUID) {
@@ -144,7 +151,8 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
         if NSMaxRange(sel) > length { sel = NSRange(location: length, length: 0) }
         textView.setSelectedRange(sel)
         textView.scrollRangeToVisible(sel)
-        textView.undoManager?.removeAllActions()
+        // Drop the previous note's typing undo only; deleted notes and tasks stay undoable.
+        if let storage = textView.textStorage { textView.undoManager?.removeAllActions(withTarget: storage) }
         // Off the launch path: the first frame doesn't wait for link detection.
         DispatchQueue.main.async { [weak self] in self?.detectLinks() }
     }
@@ -193,11 +201,16 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
 
     // MARK: - Search
 
-    /// Hides the notes the search doesn't match (title or text). The open note stays in the editor either way.
+    /// Hides the notes the search doesn't match (title or text), and the open note while it's blank:
+    /// a fresh note joins the list when it is first saved with a title. The open note stays in the editor either way.
     func applySearch() {
         // Row indexes below must match the store's; a reload re-applies the search.
         guard list.numberOfRows == notes.count else { reloadList(); return }
-        let hidden = Search.isActive ? IndexSet(notes.indices.filter { !matchesSearch(notes[$0].id) }) : IndexSet()
+        let blank = editorIsEmpty
+        let hidden = IndexSet(notes.indices.filter { row in
+            let id = notes[row].id
+            return (id == currentID && blank) || (Search.isActive && !matchesSearch(id))
+        })
         let current = list.hiddenRowIndexes
         guard hidden != current else { return }
         syncingSelection = true
@@ -233,24 +246,14 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
     // MARK: - Deleting
 
     func deleteSelectedNote() {
-        if list.selectedRow >= 0 { confirmDelete(row: list.selectedRow) }
+        if list.selectedRow >= 0 { delete(notes[list.selectedRow].id) }
     }
 
-    private func confirmDelete(row: Int) {
-        let meta = notes[row]
-        let isEmpty = meta.id == currentID ? editorIsEmpty : meta.title.isEmpty
-        guard !isEmpty, let window else { delete(meta.id); return }
-        let alert = NSAlert()
-        alert.messageText = "Delete “\(meta.title)”?"
-        alert.informativeText = "This can’t be undone."
-        alert.addButton(withTitle: "Delete").hasDestructiveAction = true
-        alert.addButton(withTitle: "Cancel")
-        alert.beginSheetModal(for: window) { [weak self] response in
-            if response == .alertFirstButtonReturn { self?.delete(meta.id) }
-        }
-    }
-
+    /// Deletes right away, no confirmation: ⌘Z brings the note back where it was.
     private func delete(_ id: UUID) {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+        let meta = notes[index]
+        let text = latestText(of: id)
         let wasCurrent = id == currentID
         if wasCurrent {
             pendingSave?.cancel()
@@ -260,6 +263,13 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
         selections[id] = nil
         if wasCurrent { showNote((notes.first ?? Store.shared.createNote()).id) }
         reloadList()
+
+        guard text.contains(where: { !$0.isWhitespace }) else { return } // nothing worth restoring
+        undoManager?.registerUndo(withTarget: self) { view in
+            Store.shared.restoreNote(meta, text: text, at: index)
+            view.open(meta.id)
+        }
+        undoManager?.setActionName("Delete Note")
     }
 
     // MARK: - List
@@ -297,7 +307,7 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
         menu.addItem(withTitle: "Delete Note", action: #selector(menuDelete), keyEquivalent: "").target = self
     }
 
-    @objc private func menuDelete() { confirmDelete(row: list.clickedRow) }
+    @objc private func menuDelete() { delete(notes[list.clickedRow].id) }
 
     @objc private func menuTogglePin() {
         Store.shared.togglePin(notes[list.clickedRow].id)
@@ -369,6 +379,13 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
     // Typing right after a link shouldn't extend it.
     func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString text: String?) -> Bool {
         textView.typingAttributes[.link] = nil
+        return true
+    }
+
+    /// ⌘-click opens a link; a plain click just puts the cursor there, so links can be edited like any text.
+    func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+        if NSApp.currentEvent?.modifierFlags.contains(.command) == true { return false } // AppKit opens it
+        textView.setSelectedRange(NSRange(location: charIndex, length: 0))
         return true
     }
 
@@ -486,7 +503,7 @@ final class NoteCell: NSView {
         let selected = isInSelectedRow
         let rect = bounds.insetBy(dx: 8, dy: 3)
         Draw.roundedBox(rect, radius: 7, fill: selected ? Theme.card : .clear,
-                        stroke: selected ? .controlAccentColor : Theme.cardBorder, lineWidth: selected ? 1.5 : 1)
+                        stroke: selected ? .controlAccentColor : Theme.cardBorder)
         var textWidth = rect.width - 20
         if pinned, let pin = Self.pinImage {
             let size = pin.size

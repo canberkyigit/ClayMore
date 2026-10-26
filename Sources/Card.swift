@@ -58,7 +58,7 @@ final class CardView: NSTableCellView {
         let selected = isInSelectedRow
         let card = bounds.insetBy(dx: Self.marginX, dy: Self.marginY)
         Draw.roundedBox(card, radius: 9, fill: Theme.card,
-                        stroke: selected ? .controlAccentColor : Theme.cardBorder, lineWidth: selected ? 1.5 : 1)
+                        stroke: selected ? .controlAccentColor : Theme.cardBorder)
         if let color = Theme.priorityColor(task.priority) {
             color.setFill()
             let stripe = NSRect(x: card.minX + 5, y: card.minY + Self.padY, width: 3, height: card.height - 2 * Self.padY)

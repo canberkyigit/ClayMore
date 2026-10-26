@@ -283,6 +283,19 @@ final class Store {
         writeNotesIndex(sync: false)
     }
 
+    /// Puts a deleted note back (undo), at its old place within its group.
+    func restoreNote(_ meta: NoteMeta, text: String, at index: Int) {
+        let pinnedCount = topIndex(pinned: false)
+        let range = meta.pinned ? 0...pinnedCount : pinnedCount...notes.count
+        notes.insert(meta, at: min(max(index, range.lowerBound), range.upperBound))
+        if searchTexts != nil { searchTexts?[meta.id] = Search.fold(text) }
+        let data = Data(text.utf8)
+        let url = noteURL(meta.id)
+        // Sync: the note is reopened right away and read back from this file.
+        run(sync: true) { _ = try? data.write(to: url, options: .atomic) }
+        writeNotesIndex(sync: false)
+    }
+
     private func writeNotesIndex(sync: Bool) {
         notesIndexDirty = false
         guard let data = try? JSONEncoder().encode(notes) else { return }

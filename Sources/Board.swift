@@ -118,9 +118,6 @@ final class BoardView: FlippedView {
                 self?.columns[changed].reload()
             }
         }
-        editor.onDelete = { [weak self] id in
-            if let (c, r) = Store.shared.locate(id) { self?.delete(column: c, row: r) }
-        }
         editor.onClose = { [weak self] in self?.popover = nil }
 
         let p = NSPopover()

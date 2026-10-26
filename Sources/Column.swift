@@ -237,11 +237,10 @@ final class ColumnView: FlippedView, NSTableViewDataSource, NSTableViewDelegate,
                 item.tag = c
             }
             menu.addItem(.separator())
-            menu.addItem(Export.menuItem(target: self, action: #selector(menuExport)))
             if isDoneColumn {
                 menu.addItem(withTitle: "Archive", action: #selector(menuArchive), keyEquivalent: "").target = self
+                menu.addItem(.separator())
             }
-            menu.addItem(.separator())
             menu.addItem(withTitle: "Delete", action: #selector(menuDelete), keyEquivalent: "").target = self
         }
         // Right-click anywhere in Done (card or empty space) to clear it.
@@ -253,11 +252,6 @@ final class ColumnView: FlippedView, NSTableViewDataSource, NSTableViewDelegate,
 
     @objc private func menuArchive() { board.archive(column: index, row: table.clickedRow) }
     @objc private func menuArchiveAll() { board.archiveDone() }
-
-    @objc private func menuExport() {
-        let task = tasks[table.clickedRow]
-        Export.save(Export.taskText(task, column: index), name: task.title, from: window)
-    }
 
     @objc private func menuEdit() { board.edit(column: index, row: table.clickedRow) }
     @objc private func menuMove(_ sender: NSMenuItem) { board.moveTask(tasks[table.clickedRow].id, to: sender.tag, row: 0) }

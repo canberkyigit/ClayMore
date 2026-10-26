@@ -80,17 +80,11 @@ final class ArchiveWindowController: NSWindowController, NSTableViewDataSource, 
         menu.addItem(withTitle: "Archived \(archived)", action: nil, keyEquivalent: "").isEnabled = false
         menu.addItem(.separator())
         menu.addItem(withTitle: "Restore to Done", action: #selector(menuRestore), keyEquivalent: "").target = self
-        menu.addItem(Export.menuItem(target: self, action: #selector(menuExport)))
         menu.addItem(.separator())
         menu.addItem(withTitle: "Delete Permanently", action: #selector(menuDelete), keyEquivalent: "").target = self
     }
 
     @objc private func menuRestore() { Store.shared.restoreArchived(at: table.clickedRow) }
-
-    @objc private func menuExport() {
-        let task = items[table.clickedRow].task
-        Export.save(Export.taskText(task, column: 2), name: task.title, from: window)
-    }
 
     @objc private func menuDelete() {
         let index = table.clickedRow

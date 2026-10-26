@@ -38,15 +38,96 @@ extension NSTextField {
     /// Single-line input with no border, background or focus ring.
     static func bareInput(font: NSFont) -> NSTextField {
         let field = NSTextField()
-        field.font = font
-        field.isBordered = false
-        field.isBezeled = false
-        field.drawsBackground = false
-        field.focusRingType = .none
-        field.usesSingleLineMode = true
-        field.cell?.isScrollable = true
-        field.cell?.wraps = false
+        field.configureBare(font: font)
         return field
+    }
+
+    func configureBare(font: NSFont) {
+        self.font = font
+        isBordered = false
+        isBezeled = false
+        drawsBackground = false
+        focusRingType = .none
+        usesSingleLineMode = true
+        cell?.isScrollable = true
+        cell?.wraps = false
+    }
+}
+
+/// The search box at the top: drawn like the "Add task" inputs, with a hairline accent
+/// outline while focused instead of the thick system focus ring.
+final class SearchBox: FlippedView {
+    let field = FocusTrackingField()
+    var onClear: (() -> Void)?
+    private let clearButton = NSButton()
+    private var focused = false { didSet { needsDisplay = true } }
+
+    private static let icon = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Search")?
+        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.secondaryLabelColor])))
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        field.configureBare(font: .systemFont(ofSize: 13))
+        field.placeholderAttributedString = NSAttributedString(string: "Search", attributes: [
+            .font: NSFont.systemFont(ofSize: 13),
+            .foregroundColor: NSColor.placeholderTextColor,
+        ])
+        field.onFocusChange = { [weak self] in self?.focused = $0 }
+        addSubview(field)
+
+        clearButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Clear Search")?
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
+        clearButton.isBordered = false
+        clearButton.contentTintColor = .tertiaryLabelColor
+        clearButton.refusesFirstResponder = true
+        clearButton.target = self
+        clearButton.action = #selector(clearClicked)
+        clearButton.isHidden = true
+        addSubview(clearButton)
+        resizeSubviews(withOldSize: .zero)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Shows the clear button only when there is something to clear.
+    func textChanged() { clearButton.isHidden = field.stringValue.isEmpty }
+
+    @objc private func clearClicked() { onClear?() }
+
+    override func resizeSubviews(withOldSize oldSize: NSSize) {
+        let h: CGFloat = 17
+        field.frame = NSRect(x: 30, y: floor((bounds.height - h) / 2), width: max(0, bounds.width - 30 - 28), height: h)
+        clearButton.frame = NSRect(x: bounds.width - 26, y: floor((bounds.height - 20) / 2), width: 20, height: 20)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        Draw.roundedBox(bounds, radius: 8, fill: Theme.inputBG, stroke: focused ? .controlAccentColor : Theme.cardBorder)
+        if let icon = Self.icon {
+            let s = icon.size
+            icon.draw(in: NSRect(x: 11, y: floor((bounds.height - s.height) / 2), width: s.width, height: s.height))
+        }
+    }
+
+    // Clicking anywhere in the box (the icon, the padding) starts typing instead of dragging the window.
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
+}
+
+/// Text field that reports when it gains and loses keyboard focus.
+final class FocusTrackingField: NSTextField {
+    var onFocusChange: ((Bool) -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { onFocusChange?(true) }
+        return ok
+    }
+
+    override func textDidEndEditing(_ notification: Notification) {
+        super.textDidEndEditing(notification)
+        onFocusChange?(false)
     }
 }
 

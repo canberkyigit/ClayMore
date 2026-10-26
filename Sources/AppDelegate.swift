@@ -7,11 +7,11 @@ final class SplitView: NSSplitView {
     override var dividerColor: NSColor { Theme.windowBG }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, NSMenuItemValidation, NSSearchFieldDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, NSMenuItemValidation, NSTextFieldDelegate {
     private var window: NSWindow!
     private var board: BoardView!
     private var notes: NotesView!
-    private let searchField = NSSearchField()
+    private let searchBox = SearchBox()
     private var launchedAtLogin = false
     private var windowWasClosed = false
     private lazy var archiveWindow = ArchiveWindowController()
@@ -139,26 +139,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, N
 
     /// A plain field rather than an NSToolbar, which cost ~50 ms of launch time.
     private func setUpSearch(in root: NSView) {
-        searchField.placeholderString = "Search"
-        searchField.sendsSearchStringImmediately = true
-        searchField.target = self
-        searchField.action = #selector(searchChanged(_:))
-        searchField.delegate = self
-        // Centered, level with the traffic lights.
-        let height = searchField.intrinsicContentSize.height, width: CGFloat = 320
-        var midY = root.bounds.height - 14
-        if let close = window.standardWindowButton(.closeButton), let bar = close.superview {
-            midY = bar.convert(close.frame, to: nil).midY
+        searchBox.field.delegate = self
+        searchBox.onClear = { [weak self] in
+            self?.setSearch("")
+            self?.focusSearch(nil)
         }
-        searchField.frame = NSRect(x: floor((root.bounds.width - width) / 2), y: floor(midY - height / 2), width: width, height: height)
-        searchField.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin]
-        root.addSubview(searchField)
+        // Centered in the strip above the panels, with equal space above and below.
+        let height: CGFloat = 26, width: CGFloat = 320
+        let midY = root.bounds.height - Theme.topInset / 2
+        searchBox.frame = NSRect(x: floor((root.bounds.width - width) / 2), y: floor(midY - height / 2), width: width, height: height)
+        searchBox.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin]
+        root.addSubview(searchBox)
     }
 
-    @objc private func searchChanged(_ sender: NSSearchField) { setSearch(sender.stringValue) }
+    func controlTextDidChange(_ notification: Notification) {
+        if notification.object as? NSTextField === searchBox.field { setSearch(searchBox.field.stringValue) }
+    }
 
     func setSearch(_ query: String) {
-        if searchField.stringValue != query { searchField.stringValue = query }
+        if searchBox.field.stringValue != query { searchBox.field.stringValue = query }
+        searchBox.textChanged()
         let wasActive = Search.isActive
         Search.set(query)
         guard wasActive || Search.isActive else { return }
@@ -168,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, N
 
     @objc func focusSearch(_ sender: Any?) {
         showWindow()
-        window.makeFirstResponder(searchField)
+        window.makeFirstResponder(searchBox.field)
     }
 
     // ↩ opens the first matching note (or selects the first card), ↓ goes to the results list, esc clears.

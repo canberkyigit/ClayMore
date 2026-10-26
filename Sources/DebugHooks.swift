@@ -31,7 +31,9 @@ enum DebugHooks {
             DispatchQueue.main.async { exit(0) }
         }
         if let query = env["CLAYMORE_SEARCH"] {
-            (NSApp.delegate as? AppDelegate)?.setSearch(query)
+            let app = NSApp.delegate as? AppDelegate
+            app?.focusSearch(nil)
+            app?.setSearch(query)
         }
         if let path = env["CLAYMORE_SNAPSHOT"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {

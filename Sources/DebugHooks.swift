@@ -5,6 +5,7 @@ import AppKit
 ///   CLAYMORE_APPEARANCE=dark|light   force appearance
 ///   CLAYMORE_SNAPSHOT=/path/out.png  render the window content to PNG and quit
 ///   CLAYMORE_EXIT_AFTER_LAUNCH=1     quit right after the first frame (launch benchmark)
+///   CLAYMORE_SEARCH=text             type text into the search field
 ///   CLAYMORE_SIMULATE_LOGIN=1        behave as if launched as a login item (prints window visibility)
 enum DebugHooks {
     private static let env = ProcessInfo.processInfo.environment
@@ -29,9 +30,12 @@ enum DebugHooks {
         if env["CLAYMORE_EXIT_AFTER_LAUNCH"] != nil {
             DispatchQueue.main.async { exit(0) }
         }
+        if let query = env["CLAYMORE_SEARCH"] {
+            (NSApp.delegate as? AppDelegate)?.setSearch(query)
+        }
         if let path = env["CLAYMORE_SNAPSHOT"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                let v = window.contentView!
+                let v = window.contentView!.superview! // frame view: includes the title bar / search
                 guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { exit(1) }
                 v.cacheDisplay(in: v.bounds, to: rep)
                 try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))

@@ -11,6 +11,8 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
     private let addButton = NSButton()
     /// Called with the selected text when the user turns it into a task.
     var onCreateTask: ((String) -> Void)?
+    /// Called before a new note is shown, so an active search doesn't hide it.
+    var onNewNote: (() -> Void)?
     private var currentID = UUID()
     private var pendingSave: DispatchWorkItem?
     private var selections: [UUID: NSRange] = [:]
@@ -155,6 +157,7 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
         let previous = currentID
         let dropPrevious = editorIsEmpty // blank notes vanish when you leave them
         showNote(id)
+        if Search.isActive { revealFirstMatch() }
         if dropPrevious {
             Store.shared.deleteNote(previous)
             selections[previous] = nil
@@ -164,6 +167,7 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
     }
 
     func newNote() {
+        onNewNote?()
         if editorIsEmpty { focusEditor(); return }
         flush()
         selections[currentID] = textView.selectedRange()
@@ -178,12 +182,52 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, N
 
     private func reloadList() {
         syncingSelection = true
-        list.reloadData()
+        list.reloadData() // also unhides every row
         if let row = notes.firstIndex(where: { $0.id == currentID }) {
             list.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
             list.scrollRowToVisible(row)
         }
         syncingSelection = false
+        applySearch()
+    }
+
+    // MARK: - Search
+
+    /// Hides the notes the search doesn't match (title or text). The open note stays in the editor either way.
+    func applySearch() {
+        // Row indexes below must match the store's; a reload re-applies the search.
+        guard list.numberOfRows == notes.count else { reloadList(); return }
+        let hidden = Search.isActive ? IndexSet(notes.indices.filter { !matchesSearch(notes[$0].id) }) : IndexSet()
+        let current = list.hiddenRowIndexes
+        guard hidden != current else { return }
+        syncingSelection = true
+        list.unhideRows(at: current.subtracting(hidden), withAnimation: [])
+        list.hideRows(at: hidden.subtracting(current), withAnimation: [])
+        syncingSelection = false
+    }
+
+    private func matchesSearch(_ id: UUID) -> Bool {
+        // The open note may have unsaved edits.
+        Search.matches(folded: id == currentID ? Search.fold(textView.string) : Store.shared.searchText(ofNote: id))
+    }
+
+    /// Opens the first matching note at its first match (↩ / ↓ in the search field). False if no note matches.
+    func openFirstMatch(focusList: Bool) -> Bool {
+        guard let row = notes.indices.first(where: { !list.hiddenRowIndexes.contains($0) }) else { return false }
+        let id = notes[row].id
+        if id == currentID { revealFirstMatch() } else { open(id) }
+        if focusList { window?.makeFirstResponder(list) } else { focusEditor() }
+        return true
+    }
+
+    /// Selects and flashes the first search word in the open note.
+    private func revealFirstMatch() {
+        guard let term = Search.terms.first else { return }
+        let range = (textView.string as NSString).range(of: term, options: [.caseInsensitive, .diacriticInsensitive])
+        guard range.location != NSNotFound else { return }
+        textView.setSelectedRange(range)
+        textView.scrollRangeToVisible(range)
+        textView.showFindIndicator(for: range)
     }
 
     // MARK: - Deleting

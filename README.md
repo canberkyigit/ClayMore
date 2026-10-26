@@ -1,3 +1,4 @@
+| ⌥⌘F | Search notes & tasks |
 # ClayMore
 
 A lightning-fast notes + kanban app for macOS.
@@ -56,6 +57,8 @@ To update later: `git pull && ./build.sh install`.
 
 **Everywhere**
 - **⌃⌥C** brings ClayMore to the front from any app — or hides it.
+- **Search** at the top filters notes (title and text) and cards as you type. It ignores case and accents, so `isik` finds “Işık”. ↩ opens the first matching note, ↓ jumps to the results, esc clears. **⌥⌘F** jumps there.
+- **Search** at the top filters notes (title and text) and cards as you type. It ignores case and accents, so `isik` finds “Işık”. ↩ opens the first matching note, ↓ jumps to the results, esc clears. Press **⌥⌘F** to jump there.
 - Every time the window opens, the cursor is in your note, ready to type. After you close the window or quit, it opens on a fresh note; the previous one is saved in the list.
 - **ClayMore → Launch at Login** starts it hidden when your Mac starts, so even the first open of the day is instant.
 - Follows the system light/dark appearance.

@@ -7,10 +7,11 @@ final class SplitView: NSSplitView {
     override var dividerColor: NSColor { Theme.windowBG }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, NSMenuItemValidation {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, NSMenuItemValidation, NSSearchFieldDelegate {
     private var window: NSWindow!
     private var board: BoardView!
     private var notes: NotesView!
+    private let searchField = NSSearchField()
     private var launchedAtLogin = false
     private var windowWasClosed = false
     private lazy var archiveWindow = ArchiveWindowController()
@@ -51,7 +52,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, N
         split.autosaveName = "ClayMoreSplit"
         // Selected note text → task at the top of Todo; focus stays in the note.
         notes.onCreateTask = { [weak self] text in self?.board.createTask(fromNote: text, column: 0, row: 0, focus: false) }
-        window.contentView = split
+        // Anything new is shown, even if it wouldn't match the current search.
+        notes.onNewNote = { [weak self] in self?.setSearch("") }
+        board.onAdd = { [weak self] in self?.setSearch("") }
+        // Root view: the split fills it, the search field floats in the title bar strip above it.
+        let root = NSView(frame: split.frame)
+        split.autoresizingMask = [.width, .height]
+        root.addSubview(split)
+        window.contentView = root
+        setUpSearch(in: root)
 
         if !window.setFrameUsingName("ClayMoreMain") { window.center() }
         window.setFrameAutosaveName("ClayMoreMain")
@@ -124,6 +133,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, N
 
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposed: CGFloat, ofSubviewAt i: Int) -> CGFloat {
         splitView.bounds.width - 420 // note list + a usable editor
+    }
+
+    // MARK: - Search (centered in the title bar; filters notes and cards as you type)
+
+    /// A plain field rather than an NSToolbar, which cost ~50 ms of launch time.
+    private func setUpSearch(in root: NSView) {
+        searchField.placeholderString = "Search"
+        searchField.sendsSearchStringImmediately = true
+        searchField.target = self
+        searchField.action = #selector(searchChanged(_:))
+        searchField.delegate = self
+        // Centered, level with the traffic lights.
+        let height = searchField.intrinsicContentSize.height, width: CGFloat = 320
+        var midY = root.bounds.height - 14
+        if let close = window.standardWindowButton(.closeButton), let bar = close.superview {
+            midY = bar.convert(close.frame, to: nil).midY
+        }
+        searchField.frame = NSRect(x: floor((root.bounds.width - width) / 2), y: floor(midY - height / 2), width: width, height: height)
+        searchField.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin]
+        root.addSubview(searchField)
+    }
+
+    @objc private func searchChanged(_ sender: NSSearchField) { setSearch(sender.stringValue) }
+
+    func setSearch(_ query: String) {
+        if searchField.stringValue != query { searchField.stringValue = query }
+        let wasActive = Search.isActive
+        Search.set(query)
+        guard wasActive || Search.isActive else { return }
+        board.applySearch()
+        notes.applySearch()
+    }
+
+    @objc func focusSearch(_ sender: Any?) {
+        showWindow()
+        window.makeFirstResponder(searchField)
+    }
+
+    // ↩ opens the first matching note (or selects the first card), ↓ goes to the results list, esc clears.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        switch sel {
+        case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.moveDown(_:)):
+            guard Search.isActive else { return false }
+            if !notes.openFirstMatch(focusList: sel == #selector(NSResponder.moveDown(_:))) { _ = board.focusFirstMatch() }
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            setSearch("")
+            notes.focusEditor()
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - Launch at login (user-toggled from the ClayMore menu)

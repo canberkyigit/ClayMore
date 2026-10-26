@@ -49,6 +49,7 @@ enum MainMenu {
                  tag: NSTextFinder.Action.nextMatch.rawValue),
             item("Find Previous", #selector(NSTextView.performTextFinderAction(_:)), "g", [.command, .shift],
                  tag: NSTextFinder.Action.previousMatch.rawValue),
+            item("Search Notes & Tasks", #selector(AppDelegate.focusSearch(_:)), "f", [.command, .option]),
             .separator(),
             item("Create Task from Selection", #selector(AppDelegate.createTaskFromSelection(_:)), "t"),
         ])

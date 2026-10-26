@@ -74,8 +74,10 @@ final class ColumnView: FlippedView, NSTableViewDataSource, NSTableViewDelegate,
         Theme.inputBG.setFill()
         NSBezierPath(roundedRect: inputRect, xRadius: 8, yRadius: 8).fill()
 
-        if tasks.isEmpty {
-            let s = NSAttributedString(string: index == 0 ? "Nothing to do 🎉" : "Drop tasks here", attributes: [
+        let placeholder = tasks.isEmpty ? (index == 0 ? "Nothing to do 🎉" : "Drop tasks here")
+            : table.hiddenRowIndexes.count == tasks.count ? "No matches" : nil
+        if let placeholder {
+            let s = NSAttributedString(string: placeholder, attributes: [
                 .font: NSFont.systemFont(ofSize: 12),
                 .foregroundColor: NSColor.tertiaryLabelColor,
             ])
@@ -87,13 +89,35 @@ final class ColumnView: FlippedView, NSTableViewDataSource, NSTableViewDelegate,
     // MARK: - Data
 
     func reload() {
-        table.reloadData()
+        table.reloadData() // also unhides every row
+        applySearch()
+    }
+
+    /// Hides the cards the search doesn't match. Rows keep their indexes, so every row-based action still works.
+    func applySearch() {
+        // Row indexes below must match the store's; a reload re-applies the search.
+        guard table.numberOfRows == tasks.count else { reload(); return }
+        let hidden = Search.isActive
+            ? IndexSet(tasks.indices.filter { !Search.matches(tasks[$0].title, tasks[$0].detail) })
+            : IndexSet()
+        let current = table.hiddenRowIndexes
+        if hidden != current {
+            table.unhideRows(at: current.subtracting(hidden), withAnimation: [])
+            table.hideRows(at: hidden.subtracting(current), withAnimation: [])
+            if hidden.contains(table.selectedRow) { table.deselectAll(nil) }
+        }
         updateCount()
         needsDisplay = true
     }
 
+    /// First card the search leaves visible.
+    var firstVisibleRow: Int? {
+        (0..<table.numberOfRows).first { !table.hiddenRowIndexes.contains($0) }
+    }
+
     private func updateCount() {
-        countLabel.stringValue = tasks.isEmpty ? "" : "\(tasks.count)"
+        let shown = tasks.count - table.hiddenRowIndexes.count
+        countLabel.stringValue = shown == 0 ? "" : "\(shown)"
     }
 
     func select(row: Int, focus: Bool) {
@@ -177,6 +201,7 @@ final class ColumnView: FlippedView, NSTableViewDataSource, NSTableViewDelegate,
             let title = addField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { return true }
             addField.stringValue = ""
+            board.onAdd?()
             Store.shared.add(title, to: index)
             reload()
             // ⌘↩ adds and opens the editor to write a description.

@@ -69,6 +69,8 @@ final class Store {
     private var pendingBoardSave: DispatchWorkItem?
     /// The index differs from disk only in modification dates; written on the next flush.
     private var notesIndexDirty = false
+    /// Folded note text for search; built on the first search (never at launch), then kept current on save.
+    private var searchTexts: [UUID: String]?
 
     private init() {
         let fm = FileManager.default
@@ -259,6 +261,8 @@ final class Store {
         meta.modified = Date()
         notes.insert(meta, at: top)
 
+        if searchTexts != nil { searchTexts?[id] = Search.fold(text) }
+
         let data = Data(text.utf8)
         let url = noteURL(id)
         run(sync: sync) { _ = try? data.write(to: url, options: .atomic) }
@@ -273,6 +277,7 @@ final class Store {
 
     func deleteNote(_ id: UUID) {
         notes.removeAll { $0.id == id }
+        searchTexts?[id] = nil
         let url = noteURL(id)
         io.async { _ = try? FileManager.default.removeItem(at: url) }
         writeNotesIndex(sync: false)
@@ -283,6 +288,15 @@ final class Store {
         guard let data = try? JSONEncoder().encode(notes) else { return }
         let url = notesIndexURL
         run(sync: sync) { _ = try? data.write(to: url, options: .atomic) }
+    }
+
+    /// A note's saved text, folded for `Search`.
+    func searchText(ofNote id: UUID) -> String {
+        if let text = searchTexts?[id] { return text }
+        if searchTexts == nil { searchTexts = [:] }
+        let text = Search.fold(noteText(id))
+        searchTexts?[id] = text
+        return text
     }
 
     /// Splits a note into a task: its title line and everything after it.

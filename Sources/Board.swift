@@ -42,11 +42,28 @@ final class BoardView: FlippedView {
     func focus(column c: Int) {
         guard (0..<3).contains(c) else { return }
         let col = columns[c]
-        if col.table.numberOfRows > 0 {
-            col.select(row: max(0, min(col.table.selectedRow, col.table.numberOfRows - 1)), focus: true)
+        let selected = col.table.selectedRow
+        if selected >= 0 && !col.table.hiddenRowIndexes.contains(selected) {
+            col.select(row: selected, focus: true)
+        } else if let row = col.firstVisibleRow {
+            col.select(row: row, focus: true)
         } else {
             col.focusAddField()
         }
+    }
+
+    // MARK: - Search
+
+    /// Called before a task is added, so an active search doesn't hide the new card.
+    var onAdd: (() -> Void)?
+
+    func applySearch() { columns.forEach { $0.applySearch() } }
+
+    /// Selects the first matching card (↩ / ↓ in the search field when no note matches).
+    func focusFirstMatch() -> Bool {
+        guard let col = columns.first(where: { $0.firstVisibleRow != nil }), let row = col.firstVisibleRow else { return false }
+        col.select(row: row, focus: true)
+        return true
     }
 
     // MARK: - Mutations
@@ -63,6 +80,7 @@ final class BoardView: FlippedView {
     func createTask(fromNote text: String, column c: Int, row: Int, focus: Bool = true) -> Bool {
         let parts = Store.taskParts(fromNote: text)
         guard !parts.title.isEmpty else { return false }
+        onAdd?()
         Store.shared.insert(TaskItem(title: parts.title, detail: parts.detail), column: c, row: row)
         columns[c].reload()
         columns[c].select(row: min(row, columns[c].table.numberOfRows - 1), focus: focus)

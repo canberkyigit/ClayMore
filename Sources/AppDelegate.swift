@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, N
     private var board: BoardView!
     private var notes: NotesView!
     private var launchedAtLogin = false
+    private var windowWasClosed = false
     private lazy var archiveWindow = ArchiveWindowController()
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -54,6 +55,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, N
 
         if !window.setFrameUsingName("ClayMoreMain") { window.center() }
         window.setFrameAutosaveName("ClayMoreMain")
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+            self?.windowWasClosed = true
+        }
 
         window.makeFirstResponder(notes.textView)
         #if DEBUG
@@ -98,12 +102,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, N
     }
 
     /// Every (re)open lands with the cursor in the note editor, so you can type immediately.
+    /// After the window was closed, that's a blank note; the previous one stays in the list.
     private func showWindowReadyToType() {
+        let reopening = windowWasClosed
         showWindow()
-        notes.focusEditor()
+        if reopening { notes.newNote() } else { notes.focusEditor() }
     }
 
     private func showWindow() {
+        windowWasClosed = false
         NSApp.unhide(nil)
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)

@@ -75,6 +75,8 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTableViewDataSource, N
         let store = Store.shared
         let start = store.notes.first(where: { $0.id == store.currentNoteID }) ?? store.notes.first ?? store.createNote()
         showNote(start.id)
+        // Every launch starts on a blank note; the last one stays in the list.
+        if !editorIsEmpty { showNote(store.createNote().id) }
         reloadList()
     }
 

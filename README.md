@@ -56,7 +56,7 @@ To update later: `git pull && ./build.sh install`.
 
 **Everywhere**
 - **⌃⌥C** brings ClayMore to the front from any app — or hides it.
-- Every time the window opens, the cursor is in your note, ready to type.
+- Every time the window opens, the cursor is in your note, ready to type. After you close the window or quit, it opens on a fresh note; the previous one is saved in the list.
 - **ClayMore → Launch at Login** starts it hidden when your Mac starts, so even the first open of the day is instant.
 - Follows the system light/dark appearance.
 

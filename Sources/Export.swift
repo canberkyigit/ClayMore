@@ -1,6 +1,6 @@
 import AppKit
 
-/// "Save as .txt…" for notes and tasks (context menus).
+/// "Save as .txt…" for tasks (context menus).
 enum Export {
     static func menuItem(target: AnyObject, action: Selector) -> NSMenuItem {
         let item = NSMenuItem(title: "Save as .txt…", action: action, keyEquivalent: "")

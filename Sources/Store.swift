@@ -67,6 +67,8 @@ final class Store {
     private var archiveCache: [ArchivedTask]?
     private let io = DispatchQueue(label: "claymore.io", qos: .utility)
     private var pendingBoardSave: DispatchWorkItem?
+    /// The index differs from disk only in modification dates; written on the next flush.
+    private var notesIndexDirty = false
 
     private init() {
         let fm = FileManager.default
@@ -216,7 +218,7 @@ final class Store {
         set { UserDefaults.standard.set(newValue?.uuidString, forKey: "CurrentNote") }
     }
 
-    private func noteURL(_ id: UUID) -> URL {
+    func noteURL(_ id: UUID) -> URL {
         notesDir.appendingPathComponent(id.uuidString + ".txt")
     }
 
@@ -260,8 +262,13 @@ final class Store {
         let data = Data(text.utf8)
         let url = noteURL(id)
         run(sync: sync) { _ = try? data.write(to: url, options: .atomic) }
-        writeNotesIndex(sync: sync)
+        // Typing that doesn't change the title or order only touches the note's own file.
+        if listChanged || sync { writeNotesIndex(sync: sync) } else { notesIndexDirty = true }
         return listChanged
+    }
+
+    func flushNotesIndex() {
+        if notesIndexDirty { writeNotesIndex(sync: true) }
     }
 
     func deleteNote(_ id: UUID) {
@@ -272,6 +279,7 @@ final class Store {
     }
 
     private func writeNotesIndex(sync: Bool) {
+        notesIndexDirty = false
         guard let data = try? JSONEncoder().encode(notes) else { return }
         let url = notesIndexURL
         run(sync: sync) { _ = try? data.write(to: url, options: .atomic) }

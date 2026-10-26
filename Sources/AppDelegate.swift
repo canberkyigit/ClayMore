@@ -88,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSSplitViewDelegate, N
 
     private func flush() {
         notes.flush()
+        Store.shared.flushNotesIndex()
         Store.shared.flushBoard()
     }
 

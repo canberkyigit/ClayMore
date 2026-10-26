@@ -52,7 +52,7 @@ To update later: `git pull && ./build.sh install`.
 **Notes ↔ tasks**
 - Drag a note onto a column to turn it into a task (first line → name, the rest → description). The note is kept.
 - Select text in a note and press **⌘T** (or right-click → *Create Task*) to add it to Todo.
-- Right-click any note or task → *Save as .txt…*
+- Right-click a task → *Save as .txt…*, or a note → *Show in Finder* (notes are already .txt files).
 
 **Everywhere**
 - **⌃⌥C** brings ClayMore to the front from any app — or hides it.

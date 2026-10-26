@@ -2,7 +2,7 @@ import AppKit
 
 /// Notes pane: a clickable list of notes on the left, a plain-text editor on the right.
 /// A note's title is its first line; edits autosave and move the note to the top of its group (pinned / others).
-final class NotesView: FlippedView, NSTextViewDelegate, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
+final class NotesView: FlippedView, NSTextViewDelegate, NSTextStorageDelegate, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
     let textView: NSTextView
     private let editorScroll: NSScrollView
     private let list = NoteListTableView()
@@ -15,6 +15,10 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTableViewDataSource, N
     private var pendingSave: DispatchWorkItem?
     private var selections: [UUID: NSRange] = [:]
     private var syncingSelection = false
+    /// Text edited since the last link scan, kept as offsets from the start and from the end
+    /// so later edits elsewhere don't invalidate it. Int.max = nothing to scan.
+    private var linkScanStart = Int.max
+    private var linkScanTail = Int.max
 
     private static let sidebarWidth: CGFloat = 176
     private static let fontSizeKey = "NotesFontSize"
@@ -64,6 +68,7 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTableViewDataSource, N
         textView.insertionPointColor = .controlAccentColor
         textView.defaultParagraphStyle = Self.paragraph
         textView.delegate = self
+        textView.textStorage?.delegate = self
         editorScroll.configurePlain()
         editorScroll.wantsLayer = true // clip scrolled text to the panel's rounded corners
         editorScroll.layer?.cornerRadius = 12
@@ -243,7 +248,7 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTableViewDataSource, N
         guard list.clickedRow >= 0 else { return }
         let pinTitle = notes[list.clickedRow].pinned ? "Unpin" : "Pin to Top"
         menu.addItem(withTitle: pinTitle, action: #selector(menuTogglePin), keyEquivalent: "").target = self
-        menu.addItem(Export.menuItem(target: self, action: #selector(menuExport)))
+        menu.addItem(withTitle: "Show in Finder", action: #selector(menuShowInFinder), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Delete Note", action: #selector(menuDelete), keyEquivalent: "").target = self
     }
@@ -255,9 +260,16 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTableViewDataSource, N
         reloadList()
     }
 
-    @objc private func menuExport() {
-        let meta = notes[list.clickedRow]
-        Export.save(latestText(of: meta.id), name: meta.title, from: window)
+    /// Notes are already plain .txt files, so reveal the file instead of exporting a copy.
+    @objc private func menuShowInFinder() {
+        let id = notes[list.clickedRow].id
+        if id == currentID { flush() } // may reorder the list, hence the id above
+        let url = Store.shared.noteURL(id)
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            NSWorkspace.shared.open(url.deletingLastPathComponent()) // blank note, not written yet
+        }
     }
 
     /// The open note may have unsaved edits, so read it from the editor rather than disk.
@@ -318,19 +330,42 @@ final class NotesView: FlippedView, NSTextViewDelegate, NSTableViewDataSource, N
 
     private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
+    func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
+                     range editedRange: NSRange, changeInLength delta: Int) {
+        guard editedMask.contains(.editedCharacters) else { return }
+        linkScanStart = min(linkScanStart, editedRange.location)
+        linkScanTail = min(linkScanTail, textStorage.length - NSMaxRange(editedRange))
+    }
+
     /// Makes URLs clickable; plain-text views don't detect links on their own.
+    /// Only rescans the paragraphs edited since the last call, so long notes stay smooth.
     private func detectLinks() {
-        guard let storage = textView.textStorage, let detector = Self.linkDetector else { return }
-        let full = NSRange(location: 0, length: storage.length)
+        guard let storage = textView.textStorage, let detector = Self.linkDetector, linkScanStart != .max else { return }
         let text = storage.string as NSString
+        let start = min(linkScanStart, text.length)
+        let end = max(start, text.length - linkScanTail)
+        linkScanStart = .max
+        linkScanTail = .max
+        // URLs never span lines, so the edited paragraphs are all that can change.
+        let range = text.paragraphRange(for: NSRange(location: start, length: end - start))
+        // Skip the detector (and the relayout) when there's nothing that could be or was a link.
+        let paragraphs = text.substring(with: range).lowercased()
+        let mayHaveLinks = paragraphs.contains("://") || paragraphs.contains("www.") || paragraphs.contains("@")
+        var hadLinks = false
+        storage.enumerateAttribute(.link, in: range) { value, _, stop in
+            if value != nil { hadLinks = true; stop.pointee = true }
+        }
+        guard mayHaveLinks || hadLinks else { return }
         storage.beginEditing()
-        storage.removeAttribute(.link, range: full)
-        detector.enumerateMatches(in: storage.string, range: full) { match, _, _ in
-            guard let match, let url = match.url else { return }
-            // Only real links, not file names that happen to end in a domain ("notes.md").
-            let raw = text.substring(with: match.range).lowercased()
-            guard raw.contains("://") || raw.hasPrefix("www.") || url.scheme == "mailto" else { return }
-            storage.addAttribute(.link, value: url, range: match.range)
+        storage.removeAttribute(.link, range: range)
+        if mayHaveLinks {
+            detector.enumerateMatches(in: storage.string, range: range) { match, _, _ in
+                guard let match, let url = match.url else { return }
+                // Only real links, not file names that happen to end in a domain ("notes.md").
+                let raw = text.substring(with: match.range).lowercased()
+                guard raw.contains("://") || raw.hasPrefix("www.") || url.scheme == "mailto" else { return }
+                storage.addAttribute(.link, value: url, range: match.range)
+            }
         }
         storage.endEditing()
     }

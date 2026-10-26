@@ -108,6 +108,9 @@ Notes are ordinary `.txt` files, so you can open them with any editor. Time Mach
 ./build.sh install  # build and copy to /Applications
 ./build.sh dist     # universal (Apple Silicon + Intel) build + build/ClayMore.zip
 ./build.sh debug    # build with the dev hooks in Sources/DebugHooks.swift
+./build.sh test     # build and run the tests in Tests/
 ```
 
 The app is a handful of files in `Sources/`, built directly with `swiftc` — no Xcode project. Views are laid out by hand and cards are drawn directly rather than built from subviews, which keeps launch and scrolling fast.
+
+The tests drive the real views and store against a throwaway data folder, so they never touch your notes. Each suite (`save`, `search`, `ux`, `click`) runs in its own process; the `click` suite launches the full app, so its window flashes up and takes focus for a moment.

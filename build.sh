@@ -3,10 +3,29 @@
 #                        ./build.sh install  → also copies it to /Applications
 #                        ./build.sh dist     → universal (Apple Silicon + Intel) build/ClayMore.zip for releases
 #                        ./build.sh debug    → debug build with dev hooks (DebugHooks.swift)
+#                        ./build.sh test     → builds and runs Tests/ (the click suite briefly shows the window)
 set -euo pipefail
 cd "$(dirname "$0")"
 
 MODE="${1:-}"
+
+if [[ "$MODE" == "test" ]]; then
+    echo "→ Compiling tests"
+    mkdir -p build
+    SOURCES=()
+    for f in Sources/*.swift; do [[ "$f" != Sources/main.swift ]] && SOURCES+=("$f"); done
+    swiftc -Onone -D DEBUG -swift-version 5 -target "$(uname -m)-apple-macos13.0" \
+        "${SOURCES[@]}" Tests/*.swift -o build/ClayMoreTests
+    # Each suite gets its own process and empty data folder: the store loads once per process.
+    failed=0
+    for suite in save search ux click; do
+        data=$(mktemp -d)
+        CLAYMORE_DATA_DIR="$data" build/ClayMoreTests "$suite" || failed=1
+        rm -rf "$data"
+    done
+    if [[ $failed == 0 ]]; then echo "✓ All tests passed"; else echo "✗ Some tests failed"; fi
+    exit $failed
+fi
 APP=build/ClayMore.app
 BIN="$APP/Contents/MacOS/ClayMore"
 FLAGS=(-O -wmo -D RELEASE)
